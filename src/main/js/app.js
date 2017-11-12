@@ -1,6 +1,9 @@
 const React = require('react');
 const ReactDOM = require('react-dom');
 const client = require('./client');
+const follow = require('./follow');
+
+const root = '/api';
 
 class App extends React.Component {
 
@@ -10,10 +13,34 @@ class App extends React.Component {
     }
 
     componentDidMount() {
-        client({method: 'GET', path: '/api/employees'})
-            .done(response => {
-                this.setState({employees: response.entity._embedded.employees});
+        this.loadFromServer(this.state.pageSize);
+    }
+
+    loadFromServer(pageSize) {
+        follow(client, root, [
+            {rel: 'employees', params: {size: pageSize}}]
+        ).then(employeeCollection => {
+            return client({
+                method: 'GET',
+                path: employeeCollection.entity._links.profile.href,
+                headers: {'Accept': 'application/schema+json'}
+            }).then(schema => {
+                this.schema = schema.entity;
+                return employeeCollection;
             });
+        }).done(employeeCollection => {
+            this.setState({
+                employees: employeeCollection.entity._embedded.employees,
+                attributes: Object.keys(this.schema.properties),
+                pageSize: pageSize,
+                links: employeeCollection.entity._links
+            });
+        });
+
+        // client({method: 'GET', path: root + '/employees'})
+        //     .done(response => {
+        //         this.setState({employees: response.entity._embedded.employees});
+        //     });
     }
 
     render() {
@@ -23,7 +50,7 @@ class App extends React.Component {
     }
 }
 
-class EmployeeList extends React.Component{
+class EmployeeList extends React.Component {
     render() {
         var employees = this.props.employees.map(employee =>
             <Employee key={employee._links.self.href} employee={employee}/>
@@ -55,4 +82,4 @@ export default class Employee extends React.Component {
     }
 }
 
-ReactDOM.render(<App />, document.getElementById('react'));
+ReactDOM.render(<App/>, document.getElementById('react'));

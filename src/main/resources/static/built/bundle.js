@@ -61,6 +61,9 @@
 	var React = __webpack_require__(1);
 	var ReactDOM = __webpack_require__(37);
 	var client = __webpack_require__(184);
+	var follow = __webpack_require__(232);
+	
+	var root = '/api';
 	
 	var App = function (_React$Component) {
 	    _inherits(App, _React$Component);
@@ -77,11 +80,35 @@
 	    _createClass(App, [{
 	        key: 'componentDidMount',
 	        value: function componentDidMount() {
+	            this.loadFromServer(this.state.pageSize);
+	        }
+	    }, {
+	        key: 'loadFromServer',
+	        value: function loadFromServer(pageSize) {
 	            var _this2 = this;
 	
-	            client({ method: 'GET', path: '/api/employees' }).done(function (response) {
-	                _this2.setState({ employees: response.entity._embedded.employees });
+	            follow(client, root, [{ rel: 'employees', params: { size: pageSize } }]).then(function (employeeCollection) {
+	                return client({
+	                    method: 'GET',
+	                    path: employeeCollection.entity._links.profile.href,
+	                    headers: { 'Accept': 'application/schema+json' }
+	                }).then(function (schema) {
+	                    _this2.schema = schema.entity;
+	                    return employeeCollection;
+	                });
+	            }).done(function (employeeCollection) {
+	                _this2.setState({
+	                    employees: employeeCollection.entity._embedded.employees,
+	                    attributes: Object.keys(_this2.schema.properties),
+	                    pageSize: pageSize,
+	                    links: employeeCollection.entity._links
+	                });
 	            });
+	
+	            // client({method: 'GET', path: root + '/employees'})
+	            //     .done(response => {
+	            //         this.setState({employees: response.entity._embedded.employees});
+	            //     });
 	        }
 	    }, {
 	        key: 'render',
@@ -27020,6 +27047,53 @@
 	        }
 	    };
 	}.call(exports, __webpack_require__, exports, module), __WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
+
+/***/ }),
+/* 232 */
+/***/ (function(module, exports) {
+
+	'use strict';
+	
+	module.exports = function follow(api, rootPath, relArray) {
+	    var root = api({
+	        method: 'GET',
+	        path: rootPath
+	    });
+	
+	    return relArray.reduce(function (root, arrayItem) {
+	        var rel = typeof arrayItem === 'string' ? arrayItem : arrayItem.rel;
+	        return traverseNext(root, rel, arrayItem);
+	    }, root);
+	
+	    function traverseNext(root, rel, arrayItem) {
+	        return root.then(function (response) {
+	            if (hasEmbeddedRel(response.entity, rel)) {
+	                return response.entity._embedded[rel];
+	            }
+	
+	            if (!response.entity._links) {
+	                return [];
+	            }
+	
+	            if (typeof arrayItem === 'string') {
+	                return api({
+	                    method: 'GET',
+	                    path: response.entity._links[rel].href
+	                });
+	            } else {
+	                return api({
+	                    method: 'GET',
+	                    path: response.entity._links[rel].href,
+	                    params: arrayItem.params
+	                });
+	            }
+	        });
+	    }
+	
+	    function hasEmbeddedRel(entity, rel) {
+	        return entity._embedded && entity._embedded.hasOwnProperty(rel);
+	    }
+	};
 
 /***/ })
 /******/ ]);
